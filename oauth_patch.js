@@ -22,10 +22,12 @@ window.IAB = {
   open: function(url) {
     var self = this;
 
+    console.log("HERE WE GO");
     // TODO add options param and append to current options
     oauthWin = __open(url, '_blank', 'location=no,hidden=yes');
 
     oauthWin.addEventListener('loadstop', checkIfOauthIsDone);
+    oauthWin.addEventListener('loaderror', checkIfOauthIsDone);
 
     // use hidden=yes as a hack for Android, allows popup to  yield events with
     // each #show call. Lets events run on Meteor app, otherwise all listeners
@@ -40,34 +42,49 @@ window.IAB = {
 
     // check if uri contains an error or code param, then manually close popup
     function checkIfOauthIsDone(event) {
-		console.log('CHECK IF OAUTH IS DONE URL', event.url);
-        if (!event.url || !event.url.match(/close|error|code=/)) return;
-
-		oauthWin.executeScript({code: 'document.querySelector("script").innerHTML'}, function(res) {
-			
-			var js = res[0].replace('window.close()', '').replace('window.opener && window.opener.', '');
-			console.log('JS', js);
-			
-			//js = something like: 
-			//Package.oauth.OAuth._handleCredentialSecret("RiU_bla_bla_9qQ2", "BtK_bla_bla_4Q"); 
-			//the first parameter is the "credentialToken" and the second the "credentialSecret"
-			eval(js);
-			
-			//now code similar to this is what would usually be called after the popup closes
-			var credentialToken = js.match(/"(.+)",/)[0].replace(/"/g, '').replace(/,/, '');
-			Accounts.oauth.tryLoginAfterPopupClosed(credentialToken)
-			//TO DO: preserve callback to Meteor.loginWithTWitter(options, callback)
-			//FOR NOW: use Deps.autorun(function() {if(Meteor.user()) //do something});
-			
-			oauthWin.close();
-		});
-
-		console.log('DONE FIRED');
-		
+      console.log('CHECK IF OAUTH IS DONE URL', event.url);
+      if (!event.url || !event.url.match(/close|error|code=/)) return;
+      oauthWin.executeScript({code: 'document.querySelector("script").innerHTML'}, function(res) {
         clearInterval(timer);
-        oauthWin.removeEventListener('loadstop', checkIfOauthIsDone)
-    }
+        console.log("Script callback");
+        if (res === '') {
+          console.log("No results");
+          console.log(oauthWin);
+          return;
+        }
+        console.log(res);
+        var js = res[0].replace('window.close()', '').replace('window.opener && window.opener.', '');
+        console.log('JS', js);
 
+        //js = something like:
+        //Package.oauth.OAuth._handleCredentialSecret("RiU_bla_bla_9qQ2", "BtK_bla_bla_4Q");
+        //the first parameter is the "credentialToken" and the second the "credentialSecret"
+        eval(js);
+
+        //now code similar to this is what would usually be called after the popup closes
+        var match = js.match(/"(.+)",/)
+        if (match !== undefined && match !== null) {
+          console.log("match exists");
+          console.log(match);
+          var credentialToken = match[0].replace(/"/g, '').replace(/,/, '');
+          console.log(credentialToken);
+          Accounts.oauth.tryLoginAfterPopupClosed(credentialToken)
+          console.log("closing");
+          oauthWin.close();
+        } else
+        {
+          console.log("no match");
+        }
+        //TO DO: preserve callback to Meteor.loginWithTWitter(options, callback)
+        //FOR NOW: use Deps.autorun(function() {if(Meteor.user()) //do something});
+      });
+      console.log('DONE FIRED');
+
+      //Accounts.oauth.tryLoginAfterPopupClosed('lol')
+      //oauthWin.removeEventListener('loadstop', checkIfOauthIsDone)
+      //oauthWin.removeEventListener('loaderror', checkIfOauthIsDone)
+      //self.close();
+    }
     this.closed = false;
   },
 
@@ -79,7 +96,9 @@ window.IAB = {
 };
 
 // monkeypatch window.open on the phonegap platform
+console.log(typeof device);
 if (typeof device !== "undefined") {
+  console.log('Setting up monkey patch');
   window.open = function(url) {
     IAB.open(url);
     // return InAppBrowser so you can set foo = open(...) and then foo.close()
